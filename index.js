@@ -96,10 +96,10 @@ app.use("/victim/", async (req, res, next) => {
   // Skip if it's just /victim/ or /victim/:id (handled by other routes)
   const parts = req.path.slice(1).split("/").filter(Boolean); // ['victim', 'id', 'subpath...']
   if (parts.length < 2) return next();
-  
+
   const safeId = parts[1]; // victim id
   const subPath = parts.slice(2).join("/") || ""; // rest of path
-  
+
   const victimDir = path.join(VICTIMS_DIR, safeId);
   const fullPath = path.join(victimDir, decodeURIComponent(subPath));
 
@@ -107,6 +107,10 @@ app.use("/victim/", async (req, res, next) => {
   if (!fullPath.startsWith(victimDir)) {
     return res.status(403).send("Invalid path");
   }
+
+  console.log(`[DEBUG] Looking for: ${fullPath}`);
+  console.log(`[DEBUG] VICTIMS_DIR: ${VICTIMS_DIR}`);
+  console.log(`[DEBUG] subPath: ${subPath}`);
 
   try {
     const stats = await fs.stat(fullPath);
@@ -137,6 +141,11 @@ app.use("/victim/", async (req, res, next) => {
     }
   } catch (err) {
     console.error("Path error:", err);
+    // List what files actually exist
+    try {
+      const contents = await fs.readdir(victimDir, { recursive: true });
+      console.log(`[DEBUG] Files in victim dir: ${contents.join(", ")}`);
+    } catch (e) {}
     res.status(404).send("Not found");
   }
 });
