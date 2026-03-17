@@ -93,12 +93,14 @@ app.get("/victim/:id", async (req, res) => {
 
 // --- Handle all /victim/ paths (subfolders and files) ---
 app.use("/victim/", async (req, res, next) => {
-  // Skip if it's just /victim/ or /victim/:id (handled by other routes)
-  const parts = req.path.slice(1).split("/").filter(Boolean); // ['victim', 'id', 'subpath...']
-  if (parts.length < 2) return next();
+  // req.path has "/victim/" stripped by app.use
+  // e.g., for /victim/ABC/file.txt, req.path = "ABC/file.txt" (no leading /)
+  const pathStr = req.path.startsWith("/") ? req.path.slice(1) : req.path;
+  const parts = pathStr.split("/").filter(Boolean);
+  if (parts.length < 1) return next();
 
-  const safeId = parts[1]; // victim id
-  const subPath = parts.slice(2).join("/") || ""; // rest of path
+  const safeId = parts[0]; // victim id
+  const subPath = parts.slice(1).join("/") || ""; // rest of path
 
   const victimDir = path.join(VICTIMS_DIR, safeId);
   const fullPath = path.join(victimDir, decodeURIComponent(subPath));
@@ -108,8 +110,10 @@ app.use("/victim/", async (req, res, next) => {
     return res.status(403).send("Invalid path");
   }
 
+  console.log(`[DEBUG] req.path: ${req.path}`);
   console.log(`[DEBUG] Looking for: ${fullPath}`);
   console.log(`[DEBUG] VICTIMS_DIR: ${VICTIMS_DIR}`);
+  console.log(`[DEBUG] safeId: ${safeId}`);
   console.log(`[DEBUG] subPath: ${subPath}`);
 
   try {
