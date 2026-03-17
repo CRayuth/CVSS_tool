@@ -64,9 +64,9 @@ app.get("/victim/:id", async (req, res) => {
   } catch (e) { res.status(404).send("Not found"); }
 });
 
-app.get("/victim/:id/:path+", async (req, res) => {
+app.get("/victim/:id/:path(.*)", async (req, res) => {
   const safeId = path.basename(req.params.id);
-  const nestedPath = req.params.path; // Captured correctly by the + suffix
+  const nestedPath = req.params.path; // This will now contain "Documents/file.pdf"
   
   const filePath = path.join(VICTIMS_DIR, safeId, nestedPath);
 
