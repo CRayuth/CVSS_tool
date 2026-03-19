@@ -13,9 +13,9 @@ const VICTIMS_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH
   : path.join(__dirname, "victims"); // fallback for local testing
 
 // --- Read secret from environment or fallback for local ---
-const SECRET_TOKEN = process.env.SECRET_TOKEN || "local_dev_token";
+const SECRET_TOKEN = process.env.SECRET_TOKEN || "qutgeek";
 if (!process.env.SECRET_TOKEN) {
-  console.warn("SECRET_TOKEN not set! Using local_dev_token (development only).");
+  console.warn("SECRET_TOKEN not set! Using qutgeek (development only).");
 }
 
 // --- Ensure victims folder exists ---
@@ -31,8 +31,9 @@ if (!process.env.SECRET_TOKEN) {
 
 // --- Root dashboard ---
 app.get("/", async (req, res) => {
-  if (req.headers.authorization !== `Bearer ${SECRET_TOKEN}`)
-    return res.status(403).send("Unauthorized");
+  // Optional: uncomment to require auth
+  // if (req.headers.authorization !== `Bearer ${SECRET_TOKEN}`)
+  //   return res.status(403).send("Unauthorized");
 
   let victims = [];
   try {
