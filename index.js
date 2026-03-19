@@ -13,9 +13,9 @@ const VICTIMS_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH
   : path.join(__dirname, "victims"); // fallback for local testing
 
 // --- Read secret from environment or fallback for local ---
-const SECRET_TOKEN = process.env.SECRET_TOKEN || "qutgeek";
+const SECRET_TOKEN = process.env.SECRET_TOKEN || "qutmess";
 if (!process.env.SECRET_TOKEN) {
-  console.warn("SECRET_TOKEN not set! Using qutgeek (development only).");
+  console.warn("SECRET_TOKEN not set! Using qutmess (development only).");
 }
 
 // --- Ensure victims folder exists ---

