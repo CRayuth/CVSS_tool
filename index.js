@@ -74,10 +74,11 @@ app.get('/victim/:id', async (req, res) => {
     }
 });
 
-app.get('/victim/:id/:subpath(*)', async (req, res) => {
+app.get('/victim/:id/*subpath', async (req, res) => {
     try {
         const victimId = req.params.id.replace(/[^a-zA-Z0-9_-]/g, '_');
-        const subPath = req.params.subpath.replace(/[^a-zA-Z0-9_/-]/g, '');
+        const subRaw = req.params.subpath;
+        const subPath = (Array.isArray(subRaw) ? subRaw.join('/') : String(subRaw || '')).replace(/[^a-zA-Z0-9_/-]/g, '');
         const fullPath = path.join(VICTIMS_DIR, victimId, subPath);
         if (!fsSync.existsSync(fullPath)) return res.status(404).send('Not found');
         const stats = await fs.stat(fullPath);
@@ -100,10 +101,14 @@ app.get('/victim/:id/:subpath(*)', async (req, res) => {
     }
 });
 
-app.get('/download/:id/:filename(*)', async (req, res) => {
+app.get('/download/:id/*filename', async (req, res) => {
     try {
         const victimId = req.params.id.replace(/[^a-zA-Z0-9_-]/g, '_');
-        const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const fileRaw = req.params.filename;
+        const filename = (Array.isArray(fileRaw) ? fileRaw : [fileRaw || ''])
+            .map((p) => String(p).replace(/[^a-zA-Z0-9._-]/g, '_'))
+            .filter(Boolean)
+            .join('/');
         const filePath = path.join(VICTIMS_DIR, victimId, filename);
         if (!fsSync.existsSync(filePath)) return res.status(404).send('Not found');
         res.download(filePath);
